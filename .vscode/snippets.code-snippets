@@ -1,0 +1,35 @@
+{
+  // Each snippet is defined under a snippet name and has a scope, prefix, body and description.
+  // Add comma separated ids of the languages where the snippet is applicable in the scope field.
+  // If scope is left empty or omitted, the snippet gets applied to all languages.
+  // The prefix is what is used to trigger the snippet and the body will be expanded and inserted.
+  // Possible variables are: $1, $2 for tab stops, $0 for the final cursor position, and ${1:label}, ${2:another} for placeholders.
+  // Placeholders with the same ids are connected.
+  "LLDB exec": {
+    "prefix": "e",
+    "body": [
+      "-exec $0"
+    ]
+  },
+  "Clang disable": {
+    "prefix": "disable",
+    "body": [
+      "#pragma clang diagnostic push",
+      "#pragma clang diagnostic ignored \"-Wunused-function\"",
+      "",
+      "#include <stdio.h>",
+      "static void printAla() {",
+      "  printf(\"Ala\\n\");",
+      "}",
+      "",
+      "#pragma clang diagnostic pop"
+    ]
+  },
+  "Clang format off": {
+    "prefix": "format",
+    "body": [
+      "// clang-format off",
+      "// clang-format on"
+    ]
+  }
+}

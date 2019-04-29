@@ -1,0 +1,57 @@
+#include "lexer.h"
+
+std::string IdentifierStr;
+double NumVal;
+
+int getToken() {
+  static int lastChar = ' ';
+
+  // skip whitespaces
+  while (isspace(lastChar))
+    lastChar = getchar();
+
+  // identifier: [a-zA-Z][a-zA-Z0-9]*
+  if (isalpha(lastChar)) {
+    IdentifierStr = lastChar;
+    while (isalnum((lastChar = getchar())))
+      IdentifierStr += lastChar;
+
+    if (IdentifierStr == "def")
+      return tok_def;
+    if (IdentifierStr == "extern")
+      return tok_extern;
+
+    return tok_identifier;
+  }
+
+  // number: [0-9.]+
+  if (isdigit(lastChar) || lastChar == '.') {
+    std::string numString;
+    do {
+      numString += lastChar;
+      lastChar = getchar();
+    } while (isdigit(lastChar) || lastChar == '.');
+
+    NumVal = strtod(numString.c_str(), 0);
+    return tok_number;
+  }
+
+  if (lastChar == '#') {
+    // Comment until end of line.
+    do
+      lastChar = getchar();
+    while (lastChar != EOF && lastChar != '\n' && lastChar != '\r');
+
+    if (lastChar != EOF)
+      return getToken();
+  }
+
+  // Check for end of file.  Don't eat the EOF.
+  if (lastChar == EOF)
+    return tok_eof;
+
+  // Otherwise, just return the character as its ascii value.
+  int result = lastChar;
+  lastChar = getchar();
+  return result;
+}
