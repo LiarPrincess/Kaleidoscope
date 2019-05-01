@@ -1,14 +1,19 @@
 #pragma once
 
-#include "common.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
+#include "llvm/Support/TargetSelect.h"
+
+#include "KaleidoscopeJIT.h"
+#include "common.h"
 
 extern llvm::LLVMContext context;
 extern std::unique_ptr<llvm::Module> module;
+extern std::unique_ptr<llvm::orc::KaleidoscopeJIT> jit;
 
+void InitializeJIT();
 void InitializeModuleAndPassManager();
 
 // Base class for all expression nodes.

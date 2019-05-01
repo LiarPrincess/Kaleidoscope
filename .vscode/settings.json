@@ -71,6 +71,11 @@
     "sstream": "cpp",
     "streambuf": "cpp",
     "system_error": "cpp",
-    "vector": "cpp"
+    "vector": "cpp",
+    "set": "cpp",
+    "cinttypes": "cpp",
+    "deque": "cpp",
+    "iostream": "cpp",
+    "stack": "cpp"
   },
 }

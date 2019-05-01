@@ -10,10 +10,11 @@
 
 llvm::LLVMContext context;
 std::unique_ptr<llvm::Module> module;
-std::unique_ptr<llvm::legacy::FunctionPassManager> functionPassManager;
+std::unique_ptr<llvm::orc::KaleidoscopeJIT> jit;
 
 static llvm::IRBuilder<> builder(context);
 static std::map<std::string, llvm::Value *> namedValues;
+static std::unique_ptr<llvm::legacy::FunctionPassManager> functionPassManager;
 
 //===----------------------------------------------------------------------===//
 // Errors
@@ -26,11 +27,20 @@ llvm::Value *LogErrorV(const char *str) {
 }
 
 //===----------------------------------------------------------------------===//
-// Module
+// Initialize
 //===----------------------------------------------------------------------===//
+
+void InitializeJIT() {
+  llvm::InitializeNativeTarget();
+  llvm::InitializeNativeTargetAsmPrinter();
+  llvm::InitializeNativeTargetAsmParser();
+
+  jit = llvm::make_unique<llvm::orc::KaleidoscopeJIT>();
+}
 
 void InitializeModuleAndPassManager() {
   module = llvm::make_unique<llvm::Module>("my cool jit", context);
+  module->setDataLayout(jit->getTargetMachine().createDataLayout());
 
   functionPassManager = llvm::make_unique<llvm::legacy::FunctionPassManager>(module.get());
   functionPassManager->add(llvm::createInstructionCombiningPass());
