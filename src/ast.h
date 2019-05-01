@@ -9,6 +9,8 @@
 extern llvm::LLVMContext context;
 extern std::unique_ptr<llvm::Module> module;
 
+void InitializeModuleAndPassManager();
+
 // Base class for all expression nodes.
 class ExprAST {
  public:

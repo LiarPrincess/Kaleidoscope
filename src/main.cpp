@@ -1,3 +1,4 @@
+#include "ast.h"
 #include "common.h"
 #include "parser.h"
 
@@ -8,6 +9,7 @@ int main(int argc, char const *argv[]) {
   AddBinaryOpPrecedence('-', 20);
   AddBinaryOpPrecedence('*', 40); // highest.
 
+  InitializeModuleAndPassManager();
   MainLoop();
 
   return 0;

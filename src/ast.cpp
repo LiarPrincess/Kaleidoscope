@@ -1,11 +1,16 @@
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/Transforms/InstCombine/InstCombine.h"
+#include "llvm/Transforms/Scalar.h"
+#include "llvm/Transforms/Scalar/GVN.h"
 
 #include "ast.h"
 
 llvm::LLVMContext context;
-std::unique_ptr<llvm::Module> module = llvm::make_unique<llvm::Module>("my cool jit", context);
+std::unique_ptr<llvm::Module> module;
+std::unique_ptr<llvm::legacy::FunctionPassManager> functionPassManager;
 
 static llvm::IRBuilder<> builder(context);
 static std::map<std::string, llvm::Value *> namedValues;
@@ -18,6 +23,21 @@ static std::map<std::string, llvm::Value *> namedValues;
 llvm::Value *LogErrorV(const char *str) {
   fprintf(stderr, "Codegen error: %s\n", str);
   return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
+// Module
+//===----------------------------------------------------------------------===//
+
+void InitializeModuleAndPassManager() {
+  module = llvm::make_unique<llvm::Module>("my cool jit", context);
+
+  functionPassManager = llvm::make_unique<llvm::legacy::FunctionPassManager>(module.get());
+  functionPassManager->add(llvm::createInstructionCombiningPass());
+  functionPassManager->add(llvm::createReassociatePass());
+  functionPassManager->add(llvm::createGVNPass());
+  functionPassManager->add(llvm::createCFGSimplificationPass());
+  functionPassManager->doInitialization();
 }
 
 //===----------------------------------------------------------------------===//
@@ -122,6 +142,7 @@ llvm::Function *FunctionAST::codegen() {
   if (auto returnValue = this->Body->codegen()) {
     builder.CreateRet(returnValue);
     llvm::verifyFunction(*function);
+    functionPassManager->run(*function);
     return function;
   }
 
