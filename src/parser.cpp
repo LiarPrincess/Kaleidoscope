@@ -14,29 +14,6 @@ static int currentToken;
 // Reads another token from the lexer and puts it in currentToken.
 static int getNextToken() {
   currentToken = getToken();
-
-  // printf("Read: ");
-  // switch (currentToken) {
-  //   case tok_eof:
-  //     printf("eof\n");
-  //     break;
-  //   case tok_def:
-  //     printf("def\n");
-  //     break;
-  //   case tok_extern:
-  //     printf("extern\n");
-  //     break;
-  //   case tok_identifier:
-  //     printf("identifier '%s'\n", IdentifierStr.c_str());
-  //     break;
-  //   case tok_number:
-  //     printf("number '%f'\n", NumVal);
-  //     break;
-  //   default:
-  //     printf("other '%c'\n", currentToken);
-  //     break;
-  // }
-
   return currentToken;
 }
 
@@ -45,14 +22,14 @@ static int getNextToken() {
 //===----------------------------------------------------------------------===//
 
 // Helper function for error handling.
-static std::unique_ptr<ExprAST> LogError(const char *Str) {
-  fprintf(stderr, "LogError: %s\n", Str);
+static std::unique_ptr<ExprAST> LogError(const char *str) {
+  fprintf(stderr, "Parser error: %s\n", str);
   return nullptr;
 }
 
 // Helper function for error handling.
-static std::unique_ptr<PrototypeAST> LogErrorP(const char *Str) {
-  LogError(Str);
+static std::unique_ptr<PrototypeAST> LogErrorP(const char *str) {
+  LogError(str);
   return nullptr;
 }
 
@@ -256,8 +233,12 @@ static std::unique_ptr<FunctionAST> ParseTopLevelExpr() {
 //===----------------------------------------------------------------------===//
 
 static void HandleDefinition() {
-  if (ParseFunctionDefinition()) {
-    fprintf(stderr, "Parsed a function definition.\n");
+  if (auto ast = ParseFunctionDefinition()) {
+    if (auto ir = ast->codegen()) {
+      fprintf(stderr, "Parsed a function definition.\n");
+      ir->print(llvm::errs());
+      fprintf(stderr, "\n");
+    }
   } else {
     // Skip token for error recovery.
     getNextToken();
@@ -265,8 +246,12 @@ static void HandleDefinition() {
 }
 
 static void HandleExtern() {
-  if (ParseExtern()) {
-    fprintf(stderr, "Parsed an extern\n");
+  if (auto ast = ParseExtern()) {
+    if (auto ir = ast->codegen()) {
+      fprintf(stderr, "Parsed an extern\n");
+      ir->print(llvm::errs());
+      fprintf(stderr, "\n");
+    }
   } else {
     // Skip token for error recovery.
     getNextToken();
@@ -275,8 +260,12 @@ static void HandleExtern() {
 
 static void HandleTopLevelExpression() {
   // Evaluate a top-level expression into an anonymous function.
-  if (ParseTopLevelExpr()) {
-    fprintf(stderr, "Parsed a top-level expr\n");
+  if (auto ast = ParseTopLevelExpr()) {
+    if (auto ir = ast->codegen()) {
+      fprintf(stderr, "Parsed a top-level expr\n");
+      ir->print(llvm::errs());
+      fprintf(stderr, "\n");
+    }
   } else {
     // Skip token for error recovery.
     getNextToken();
