@@ -52,7 +52,7 @@ void InitializeModuleAndPassManager() {
 }
 
 //===----------------------------------------------------------------------===//
-// Codegen
+// Codegen - primary
 //===----------------------------------------------------------------------===//
 
 llvm::Value *NumberExprAST::codegen() {
@@ -102,6 +102,10 @@ static llvm::Function *getFunction(const std::string &name) {
   return nullptr;
 }
 
+//===----------------------------------------------------------------------===//
+// Codegen - control
+//===----------------------------------------------------------------------===//
+
 llvm::Value *IfExprAST::codegen() {
   auto condInput = this->Cond->codegen();
   if (!condInput)
@@ -110,10 +114,10 @@ llvm::Value *IfExprAST::codegen() {
   auto zero = llvm::ConstantFP::get(context, llvm::APFloat(0.0));
   auto cond = builder.CreateFCmpONE(condInput, zero, "ifcond");
 
-  // current Function object that is being built
-  auto function = builder.GetInsertBlock()->getParent();
+  // current object that is being built
+  auto parent = builder.GetInsertBlock()->getParent();
 
-  auto thenBlock = llvm::BasicBlock::Create(context, "then", function);
+  auto thenBlock = llvm::BasicBlock::Create(context, "then", parent);
   auto elseBlock = llvm::BasicBlock::Create(context, "else");
   auto mergeBlock = llvm::BasicBlock::Create(context, "ifcont");
 
@@ -129,7 +133,7 @@ llvm::Value *IfExprAST::codegen() {
   thenBlock = builder.GetInsertBlock(); // we could nest block, ant 'then' may no longer be last one
 
   // 'else' codegen
-  function->getBasicBlockList().push_back(elseBlock);
+  parent->getBasicBlockList().push_back(elseBlock);
   builder.SetInsertPoint(elseBlock);
 
   auto elseBlockContent = this->Else->codegen();
@@ -140,14 +144,75 @@ llvm::Value *IfExprAST::codegen() {
   elseBlock = builder.GetInsertBlock(); // same as before
 
   // 'merge' codegen
-  function->getBasicBlockList().push_back(mergeBlock);
+  parent->getBasicBlockList().push_back(mergeBlock);
   builder.SetInsertPoint(mergeBlock);
 
-  auto phiNode = builder.CreatePHI(llvm::Type::getDoubleTy(context), 2, "iftmp");
+  auto doubleType = llvm::Type::getDoubleTy(context);
+  auto phiNode = builder.CreatePHI(doubleType, 2, "iftmp");
   phiNode->addIncoming(thenBlockContent, thenBlock);
   phiNode->addIncoming(elseBlockContent, elseBlock);
 
   return phiNode;
+}
+
+llvm::Value *ForExprAST::codegen() {
+  auto initialVal = this->Start->codegen();
+  if (!initialVal)
+    return nullptr;
+
+  // current object that is being built
+  auto parent = builder.GetInsertBlock()->getParent();
+
+  auto preheaderBlock = builder.GetInsertBlock();
+  auto loopBlock = llvm::BasicBlock::Create(context, "loop", parent);
+
+  builder.CreateBr(loopBlock);
+
+  // loop
+  builder.SetInsertPoint(loopBlock);
+
+  auto doubleType = llvm::Type::getDoubleTy(context);
+  auto loopPhiNode = builder.CreatePHI(doubleType, 2, this->VarName.c_str());
+  loopPhiNode->addIncoming(initialVal, preheaderBlock);
+
+  auto oldValue = namedValues[this->VarName];
+  namedValues[this->VarName] = loopPhiNode;
+
+  if (!this->Body->codegen())
+    return nullptr;
+
+  llvm::Value *increment = nullptr;
+  if (this->Step) {
+    increment = this->Step->codegen();
+    if (!increment)
+      return nullptr;
+  } else {
+    increment = llvm::ConstantFP::get(context, llvm::APFloat(1.0));
+  }
+
+  auto nextVal = builder.CreateFAdd(loopPhiNode, increment, "nextVal");
+
+  auto endCond = this->End->codegen();
+  if (!endCond)
+    return nullptr;
+
+  auto zero = llvm::ConstantFP::get(context, llvm::APFloat(0.0));
+  endCond = builder.CreateFCmpONE(endCond, zero, "loopcond");
+
+  // Create the "after loop" block and insert it.
+  auto loopEndBlock = builder.GetInsertBlock();
+  auto afterBlock = llvm::BasicBlock::Create(context, "afterloop", parent);
+  builder.CreateCondBr(endCond, loopBlock, afterBlock);
+
+  builder.SetInsertPoint(afterBlock);
+
+  loopPhiNode->addIncoming(nextVal, loopEndBlock);
+  if (oldValue)
+    namedValues[VarName] = oldValue;
+  else
+    namedValues.erase(this->VarName);
+
+  return llvm::Constant::getNullValue(llvm::Type::getDoubleTy(context));
 }
 
 llvm::Value *CallExprAST::codegen() {
@@ -170,6 +235,10 @@ llvm::Value *CallExprAST::codegen() {
 
   return builder.CreateCall(callee, arguments, "calltmp");
 }
+
+//===----------------------------------------------------------------------===//
+// Codegen - functions
+//===----------------------------------------------------------------------===//
 
 llvm::Function *PrototypeAST::codegen() {
   // make function type: double(double, double)

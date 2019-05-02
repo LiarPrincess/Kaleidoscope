@@ -26,6 +26,10 @@ int AdvanceToken() {
       return tok_then;
     if (tokenIdentifier == "else")
       return tok_else;
+    if (tokenIdentifier == "for")
+      return tok_for;
+    if (tokenIdentifier == "in")
+      return tok_in;
 
     return tok_identifier;
   }

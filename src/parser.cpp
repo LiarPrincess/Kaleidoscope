@@ -93,6 +93,9 @@ std::unique_ptr<ExprAST> ParseIdentifierExpr() {
   return llvm::make_unique<CallExprAST>(name, std::move(args));
 }
 
+std::unique_ptr<ExprAST> ParseIfExpr();
+static std::unique_ptr<ExprAST> ParseForExpr();
+
 // primary
 //   ::= identifierexpr
 //   ::= numberexpr
@@ -105,6 +108,8 @@ std::unique_ptr<ExprAST> ParsePrimary() {
       return ParseNumberExpr();
     case tok_if:
       return ParseIfExpr();
+    case tok_for:
+      return ParseForExpr();
     case '(':
       return ParseParenExpr();
     default:
@@ -198,6 +203,53 @@ std::unique_ptr<ExprAST> ParseIfExpr() {
     return nullptr;
 
   return llvm::make_unique<IfExprAST>(std::move(cond), std::move(thenExpr), std::move(elseExpr));
+}
+
+// forexpr ::= 'for' identifier '=' expr ',' expr (',' expr)? 'in' expression
+static std::unique_ptr<ExprAST> ParseForExpr() {
+  GetNextToken(); // eat for
+
+  if (currentToken != tok_identifier)
+    return LogError("expected identifier after for");
+
+  auto varName = tokenIdentifier;
+  GetNextToken(); // eat identifier.
+
+  if (currentToken != '=')
+    return LogError("expected '=' after for");
+  GetNextToken(); // eat '='
+
+  auto initialVal = ParseExpr();
+  if (!initialVal)
+    return nullptr;
+
+  if (currentToken != ',')
+    return LogError("expected ',' after for initial value");
+  GetNextToken(); // eat ','
+
+  auto endValue = ParseExpr();
+  if (!endValue)
+    return nullptr;
+
+  // The step value is optional.
+  std::unique_ptr<ExprAST> increment;
+  if (currentToken == ',') {
+    GetNextToken();
+    increment = ParseExpr();
+    if (!increment)
+      return nullptr;
+  }
+
+  if (currentToken != tok_in)
+    return LogError("expected 'in' after for");
+  GetNextToken(); // eat 'in'
+
+  auto body = ParseExpr();
+  if (!body)
+    return nullptr;
+
+  return llvm::make_unique<ForExprAST>(varName, std::move(initialVal), std::move(endValue),
+                                       std::move(increment), std::move(body));
 }
 
 //===----------------------------------------------------------------------===//
