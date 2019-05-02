@@ -102,6 +102,54 @@ static llvm::Function *getFunction(const std::string &name) {
   return nullptr;
 }
 
+llvm::Value *IfExprAST::codegen() {
+  auto condInput = this->Cond->codegen();
+  if (!condInput)
+    return nullptr;
+
+  auto zero = llvm::ConstantFP::get(context, llvm::APFloat(0.0));
+  auto cond = builder.CreateFCmpONE(condInput, zero, "ifcond");
+
+  // current Function object that is being built
+  auto function = builder.GetInsertBlock()->getParent();
+
+  auto thenBlock = llvm::BasicBlock::Create(context, "then", function);
+  auto elseBlock = llvm::BasicBlock::Create(context, "else");
+  auto mergeBlock = llvm::BasicBlock::Create(context, "ifcont");
+
+  builder.CreateCondBr(cond, thenBlock, elseBlock);
+
+  // 'then' codegen
+  builder.SetInsertPoint(thenBlock);
+  auto thenBlockContent = this->Then->codegen();
+  if (!thenBlockContent)
+    return nullptr;
+
+  builder.CreateBr(mergeBlock); // br label %ifcont
+  thenBlock = builder.GetInsertBlock(); // we could nest block, ant 'then' may no longer be last one
+
+  // 'else' codegen
+  function->getBasicBlockList().push_back(elseBlock);
+  builder.SetInsertPoint(elseBlock);
+
+  auto elseBlockContent = this->Else->codegen();
+  if (!elseBlockContent)
+    return nullptr;
+
+  builder.CreateBr(mergeBlock); // br label %ifcont
+  elseBlock = builder.GetInsertBlock(); // same as before
+
+  // 'merge' codegen
+  function->getBasicBlockList().push_back(mergeBlock);
+  builder.SetInsertPoint(mergeBlock);
+
+  auto phiNode = builder.CreatePHI(llvm::Type::getDoubleTy(context), 2, "iftmp");
+  phiNode->addIncoming(thenBlockContent, thenBlock);
+  phiNode->addIncoming(elseBlockContent, elseBlock);
+
+  return phiNode;
+}
+
 llvm::Value *CallExprAST::codegen() {
   auto *callee = getFunction(this->Callee);
   if (!callee)

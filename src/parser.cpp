@@ -13,7 +13,7 @@ int currentToken;
 
 // Reads another token from the lexer and puts it in currentToken.
 int GetNextToken() {
-  return currentToken = getToken();
+  return currentToken = AdvanceToken();
 }
 
 //===----------------------------------------------------------------------===//
@@ -38,7 +38,7 @@ static std::unique_ptr<PrototypeAST> LogErrorP(const char *str) {
 
 // numberexpr ::= number
 std::unique_ptr<ExprAST> ParseNumberExpr() {
-  auto result = llvm::make_unique<NumberExprAST>(NumVal);
+  auto result = llvm::make_unique<NumberExprAST>(tokenNumericValue);
   GetNextToken(); // consume the number
   return std::move(result);
 }
@@ -62,7 +62,7 @@ std::unique_ptr<ExprAST> ParseParenExpr() {
 //   ::= identifier
 //   ::= identifier '(' expression* ')'
 std::unique_ptr<ExprAST> ParseIdentifierExpr() {
-  std::string name = IdentifierStr;
+  std::string name = tokenIdentifier;
   GetNextToken(); // eat identifier
 
   // variable ref.
@@ -103,6 +103,8 @@ std::unique_ptr<ExprAST> ParsePrimary() {
       return ParseIdentifierExpr();
     case tok_number:
       return ParseNumberExpr();
+    case tok_if:
+      return ParseIfExpr();
     case '(':
       return ParseParenExpr();
     default:
@@ -168,6 +170,37 @@ std::unique_ptr<ExprAST> ParseExpr() {
 }
 
 //===----------------------------------------------------------------------===//
+// Control expressions
+//===----------------------------------------------------------------------===//
+
+std::unique_ptr<ExprAST> ParseIfExpr() {
+  GetNextToken(); // eat if
+
+  auto cond = ParseExpr();
+  if (!cond)
+    return nullptr;
+
+  if (currentToken != tok_then)
+    return LogError("expected then");
+  GetNextToken(); // eat then
+
+  auto thenExpr = ParseExpr();
+  if (!thenExpr)
+    return nullptr;
+
+  if (currentToken != tok_else)
+    return LogError("expected else");
+
+  GetNextToken();
+
+  auto elseExpr = ParseExpr();
+  if (!elseExpr)
+    return nullptr;
+
+  return llvm::make_unique<IfExprAST>(std::move(cond), std::move(thenExpr), std::move(elseExpr));
+}
+
+//===----------------------------------------------------------------------===//
 // Functions
 //===----------------------------------------------------------------------===//
 
@@ -177,7 +210,7 @@ std::unique_ptr<PrototypeAST> ParsePrototype() {
   if (currentToken != tok_identifier)
     return LogErrorP("Unexpected function name in prototype.");
 
-  std::string name = IdentifierStr;
+  std::string name = tokenIdentifier;
   GetNextToken();
 
   if (currentToken != '(')
@@ -185,7 +218,7 @@ std::unique_ptr<PrototypeAST> ParsePrototype() {
 
   std::vector<std::string> argNames;
   while (GetNextToken() == tok_identifier) {
-    argNames.push_back(IdentifierStr);
+    argNames.push_back(tokenIdentifier);
   }
 
   if (currentToken != ')')

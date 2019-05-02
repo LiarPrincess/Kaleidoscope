@@ -12,13 +12,17 @@ enum Token {
   // primary
   tok_identifier = -4,
   tok_number = -5,
+  // control
+  tok_if = -6,
+  tok_then = -7,
+  tok_else = -8,
 };
 
 // Filled in if tok_identifier
-extern std::string IdentifierStr; // TODO: tokenIdentifier
+extern std::string tokenIdentifier;
 
 // Filled in if tok_number
-extern double NumVal; // TODO: tokenNumericValue
+extern double tokenNumericValue;
 
 // Returns the next token from standard input.
-int getToken();
+int AdvanceToken();

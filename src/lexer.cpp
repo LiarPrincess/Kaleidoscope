@@ -1,9 +1,9 @@
 #include "lexer.h"
 
-std::string IdentifierStr;
-double NumVal;
+std::string tokenIdentifier;
+double tokenNumericValue;
 
-int getToken() {
+int AdvanceToken() {
   static int lastChar = ' ';
 
   // skip whitespaces
@@ -12,14 +12,20 @@ int getToken() {
 
   // identifier: [a-zA-Z][a-zA-Z0-9]*
   if (isalpha(lastChar)) {
-    IdentifierStr = lastChar;
+    tokenIdentifier = lastChar;
     while (isalnum((lastChar = getchar())))
-      IdentifierStr += lastChar;
+      tokenIdentifier += lastChar;
 
-    if (IdentifierStr == "def")
+    if (tokenIdentifier == "def")
       return tok_def;
-    if (IdentifierStr == "extern")
+    if (tokenIdentifier == "extern")
       return tok_extern;
+    if (tokenIdentifier == "if")
+      return tok_if;
+    if (tokenIdentifier == "then")
+      return tok_then;
+    if (tokenIdentifier == "else")
+      return tok_else;
 
     return tok_identifier;
   }
@@ -32,7 +38,7 @@ int getToken() {
       lastChar = getchar();
     } while (isdigit(lastChar) || lastChar == '.');
 
-    NumVal = strtod(numString.c_str(), 0);
+    tokenNumericValue = strtod(numString.c_str(), 0);
     return tok_number;
   }
 
@@ -43,7 +49,7 @@ int getToken() {
     while (lastChar != EOF && lastChar != '\n' && lastChar != '\r');
 
     if (lastChar != EOF)
-      return getToken();
+      return AdvanceToken();
   }
 
   // Check for end of file.  Don't eat the EOF.
