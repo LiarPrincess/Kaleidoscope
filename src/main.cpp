@@ -11,6 +11,9 @@ static void HandleDefinition() {
       fprintf(stderr, "Parsed a function definition.\n");
       ir->print(llvm::errs());
       fprintf(stderr, "\n");
+
+      jit->addModule(std::move(module));
+      InitializeModuleAndPassManager();
     }
   } else {
     // Skip token for error recovery.
@@ -24,6 +27,8 @@ static void HandleExtern() {
       fprintf(stderr, "Parsed an extern\n");
       ir->print(llvm::errs());
       fprintf(stderr, "\n");
+
+      functionPrototypes[ast->getName()] = std::move(ast);
     }
   } else {
     // Skip token for error recovery.
@@ -39,12 +44,12 @@ static void HandleTopLevelExpression() {
       ir->print(llvm::errs());
       fprintf(stderr, "\n");
 
-      auto &symbols = module->getValueSymbolTable();
-      fprintf(stderr, "Symbols (%d):\n", symbols.size());
-      for (auto it = symbols.begin(); it != symbols.end(); ++it) {
-        auto key = it->getKey();
-        fprintf(stderr, "- %s\n", key.str().c_str());
-      }
+      // auto &symbols = module->getValueSymbolTable();
+      // fprintf(stderr, "Symbols (%d):\n", symbols.size());
+      // for (auto it = symbols.begin(); it != symbols.end(); ++it) {
+      //   auto key = it->getKey();
+      //   fprintf(stderr, "- %s\n", key.str().c_str());
+      // }
 
       auto moduleHandle = jit->addModule(std::move(module));
       InitializeModuleAndPassManager();
@@ -63,6 +68,12 @@ static void HandleTopLevelExpression() {
     // Skip token for error recovery.
     GetNextToken();
   }
+}
+
+/// putchard - putchar that takes a double and returns 0.
+extern "C" double putchard(double X) {
+  fputc((char)X, stderr);
+  return 0;
 }
 
 int main(int argc, char const *argv[]) {

@@ -11,6 +11,7 @@
 llvm::LLVMContext context;
 std::unique_ptr<llvm::Module> module;
 std::unique_ptr<llvm::orc::KaleidoscopeJIT> jit;
+std::map<std::string, std::unique_ptr<PrototypeAST>> functionPrototypes;
 
 static llvm::IRBuilder<> builder(context);
 static std::map<std::string, llvm::Value *> namedValues;
@@ -90,8 +91,19 @@ llvm::Value *BinaryExprAST::codegen() {
   }
 }
 
+static llvm::Function *getFunction(const std::string &name) {
+  if (auto function = module->getFunction(name))
+    return function;
+
+  auto prototype = functionPrototypes.find(name);
+  if (prototype != functionPrototypes.end())
+    return prototype->second->codegen();
+
+  return nullptr;
+}
+
 llvm::Value *CallExprAST::codegen() {
-  auto *callee = module->getFunction(this->Callee);
+  auto *callee = getFunction(this->Callee);
   if (!callee)
     return LogErrorV("Unknown function referenced");
 
@@ -129,10 +141,11 @@ llvm::Function *PrototypeAST::codegen() {
 }
 
 llvm::Function *FunctionAST::codegen() {
-  auto function = module->getFunction(this->Proto->getName());
-
-  if (!function)
-    function = this->Proto->codegen();
+  // Transfer ownership of the prototype to the FunctionProtos map,
+  // but keep a reference to it for use below.
+  PrototypeAST &prototype = *this->Proto;
+  functionPrototypes[this->Proto->getName()] = std::move(this->Proto);
+  llvm::Function *function = getFunction(prototype.getName());
 
   if (!function)
     return nullptr;

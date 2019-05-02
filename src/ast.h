@@ -9,9 +9,12 @@
 #include "KaleidoscopeJIT.h"
 #include "common.h"
 
+class PrototypeAST;
+
 extern llvm::LLVMContext context;
 extern std::unique_ptr<llvm::Module> module;
 extern std::unique_ptr<llvm::orc::KaleidoscopeJIT> jit;
+extern std::map<std::string, std::unique_ptr<PrototypeAST>> functionPrototypes;
 
 void InitializeJIT();
 void InitializeModuleAndPassManager();
