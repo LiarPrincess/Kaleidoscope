@@ -48,7 +48,10 @@ static void HandleTopLevelExpression() {
       // fprintf(stderr, "Symbols (%d):\n", symbols.size());
       // for (auto it = symbols.begin(); it != symbols.end(); ++it) {
       //   auto key = it->getKey();
-      //   fprintf(stderr, "- %s\n", key.str().c_str());
+      //   auto value = it->getValue();
+      //   auto valueName = value->getName();
+      //   fprintf(stderr, "- %s - %s\n", key.str().c_str(), valueName.str().c_str());
+      //   value->print(llvm::outs(), true);
       // }
 
       auto moduleHandle = jit->addModule(std::move(module));
@@ -59,7 +62,7 @@ static void HandleTopLevelExpression() {
 
       // Get the symbol's address and cast it to the right type (takes no
       // arguments, returns a double) so we can call it as a native function.
-      double (*functionPtr)() = (double (*)())(intptr_t)exprSymbol.getAddress().get();
+      double (*functionPtr)() = (double (*)())(intptr_t)llvm::cantFail(exprSymbol.getAddress());
       fprintf(stderr, "Evaluated to %f\n", functionPtr());
 
       jit->removeModule(moduleHandle);
@@ -70,9 +73,15 @@ static void HandleTopLevelExpression() {
   }
 }
 
-/// putchard - putchar that takes a double and returns 0.
+// putchar that takes a double and returns 0.
 extern "C" double putchard(double X) {
   fputc((char)X, stderr);
+  return 0;
+}
+
+// printf that takes a double prints it as "%f\n", returning 0.
+extern "C" double printd(double X) {
+  fprintf(stderr, "%f\n", X);
   return 0;
 }
 
