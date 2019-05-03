@@ -5,6 +5,7 @@
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Scalar/GVN.h"
+#include "llvm/Transforms/Utils.h"
 
 #include "ast.h"
 
@@ -15,7 +16,7 @@ std::map<std::string, std::unique_ptr<PrototypeAST>> functionPrototypes;
 std::map<char, int> binaryOpPrecedence;
 
 static llvm::IRBuilder<> builder(context);
-static std::map<std::string, llvm::Value *> namedValues;
+static std::map<std::string, llvm::AllocaInst *> namedValues;
 static std::unique_ptr<llvm::legacy::FunctionPassManager> functionPassManager;
 
 //===----------------------------------------------------------------------===//
@@ -45,6 +46,7 @@ void InitializeModuleAndPassManager() {
   module->setDataLayout(jit->getTargetMachine().createDataLayout());
 
   functionPassManager = llvm::make_unique<llvm::legacy::FunctionPassManager>(module.get());
+  functionPassManager->add(llvm::createPromoteMemoryToRegisterPass());
   functionPassManager->add(llvm::createInstructionCombiningPass());
   functionPassManager->add(llvm::createReassociatePass());
   functionPassManager->add(llvm::createGVNPass());
@@ -57,25 +59,15 @@ void AddBinaryOp(char op, int precedence) {
 }
 
 //===----------------------------------------------------------------------===//
-// Codegen - primary
+// Codegen - helpers
 //===----------------------------------------------------------------------===//
 
-llvm::Value *NumberExprAST::codegen() {
-  return llvm::ConstantFP::get(context, llvm::APFloat(this->Value));
+static llvm::AllocaInst *CreateEntryBlockAlloca(llvm::Function *function,
+                                                const std::string &varName) {
+  llvm::IRBuilder<> tmpBuilder(&function->getEntryBlock(), function->getEntryBlock().begin());
+  auto doubleType = llvm::Type::getDoubleTy(context);
+  return tmpBuilder.CreateAlloca(doubleType, 0, varName.c_str());
 }
-
-llvm::Value *VariableExprAST::codegen() {
-  // look this variable up in the function.
-  auto value = namedValues[this->Name];
-  if (!value)
-    LogErrorV("Unknown variable name.");
-
-  return value;
-}
-
-//===----------------------------------------------------------------------===//
-// Codegen - operators
-//===----------------------------------------------------------------------===//
 
 static llvm::Function *getFunction(const std::string &name) {
   if (auto function = module->getFunction(name))
@@ -87,6 +79,26 @@ static llvm::Function *getFunction(const std::string &name) {
 
   return nullptr;
 }
+
+//===----------------------------------------------------------------------===//
+// Codegen - primary
+//===----------------------------------------------------------------------===//
+
+llvm::Value *NumberExprAST::codegen() {
+  return llvm::ConstantFP::get(context, llvm::APFloat(this->Value));
+}
+
+llvm::Value *VariableExprAST::codegen() {
+  auto value = namedValues[this->Name];
+  if (!value)
+    LogErrorV("Unknown variable name.");
+
+  return builder.CreateLoad(value, this->Name.c_str());
+}
+
+//===----------------------------------------------------------------------===//
+// Codegen - operators
+//===----------------------------------------------------------------------===//
 
 llvm::Value *UnaryExprAST::codegen() {
   auto operandV = this->Operand->codegen();
@@ -183,60 +195,74 @@ llvm::Value *IfExprAST::codegen() {
   return phiNode;
 }
 
+// Output for-loop as:
+//   var = alloca double
+//   ...
+//   start = startexpr
+//   store start -> var
+//   goto loop
+// loop:
+//   ...
+//   bodyexpr
+//   ...
+// loopend:
+//   step = stepexpr
+//   endcond = endexpr
+//
+//   curvar = load var
+//   nextvar = curvar + step
+//   store nextvar -> var
+//   br endcond, loop, endloop
+// outloop:
 llvm::Value *ForExprAST::codegen() {
-  auto initialVal = this->Start->codegen();
-  if (!initialVal)
+  auto parent = builder.GetInsertBlock()->getParent();
+  auto alloca = CreateEntryBlockAlloca(parent, this->VarName);
+
+  auto startVal = this->Start->codegen();
+  if (!startVal)
     return nullptr;
 
-  // current object that is being built
-  auto parent = builder.GetInsertBlock()->getParent();
+  builder.CreateStore(startVal, alloca);
 
-  auto preheaderBlock = builder.GetInsertBlock();
+  // auto preheaderBlock = builder.GetInsertBlock();
   auto loopBlock = llvm::BasicBlock::Create(context, "loop", parent);
-
   builder.CreateBr(loopBlock);
 
   // loop
+  auto oldVal = namedValues[VarName];
+  namedValues[VarName] = alloca;
+
   builder.SetInsertPoint(loopBlock);
-
-  auto doubleType = llvm::Type::getDoubleTy(context);
-  auto loopPhiNode = builder.CreatePHI(doubleType, 2, this->VarName.c_str());
-  loopPhiNode->addIncoming(initialVal, preheaderBlock);
-
-  auto oldValue = namedValues[this->VarName];
-  namedValues[this->VarName] = loopPhiNode;
-
   if (!this->Body->codegen())
     return nullptr;
 
-  llvm::Value *increment = nullptr;
+  llvm::Value *stepVal = nullptr;
   if (this->Step) {
-    increment = this->Step->codegen();
-    if (!increment)
+    stepVal = this->Step->codegen();
+    if (!stepVal)
       return nullptr;
   } else {
-    increment = llvm::ConstantFP::get(context, llvm::APFloat(1.0));
+    stepVal = llvm::ConstantFP::get(context, llvm::APFloat(1.0));
   }
-
-  auto nextVal = builder.CreateFAdd(loopPhiNode, increment, "nextVal");
 
   auto endCond = this->End->codegen();
   if (!endCond)
     return nullptr;
 
+  auto curVar = builder.CreateLoad(alloca, VarName.c_str());
+  auto nextVar = builder.CreateFAdd(curVar, stepVal, "nextvar");
+  builder.CreateStore(nextVar, alloca);
+
   auto zero = llvm::ConstantFP::get(context, llvm::APFloat(0.0));
   endCond = builder.CreateFCmpONE(endCond, zero, "loopcond");
 
   // Create the "after loop" block and insert it.
-  auto loopEndBlock = builder.GetInsertBlock();
   auto afterBlock = llvm::BasicBlock::Create(context, "afterloop", parent);
   builder.CreateCondBr(endCond, loopBlock, afterBlock);
-
   builder.SetInsertPoint(afterBlock);
 
-  loopPhiNode->addIncoming(nextVal, loopEndBlock);
-  if (oldValue)
-    namedValues[VarName] = oldValue;
+  if (oldVal)
+    namedValues[VarName] = oldVal;
   else
     namedValues.erase(this->VarName);
 
@@ -304,7 +330,9 @@ llvm::Function *FunctionAST::codegen() {
 
   namedValues.clear();
   for (auto &arg : function->args()) {
-    namedValues[arg.getName()] = &arg;
+    auto alloca = CreateEntryBlockAlloca(function, arg.getName());
+    builder.CreateStore(&arg, alloca);
+    namedValues[arg.getName()] = alloca;
   }
 
   if (auto returnValue = this->Body->codegen()) {
