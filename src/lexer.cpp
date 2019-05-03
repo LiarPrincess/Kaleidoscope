@@ -30,6 +30,10 @@ int AdvanceToken() {
       return tok_for;
     if (tokenIdentifier == "in")
       return tok_in;
+    if (tokenIdentifier == "binary")
+      return tok_binary;
+    if (tokenIdentifier == "unary")
+      return tok_unary;
 
     return tok_identifier;
   }

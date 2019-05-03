@@ -12,6 +12,7 @@ llvm::LLVMContext context;
 std::unique_ptr<llvm::Module> module;
 std::unique_ptr<llvm::orc::KaleidoscopeJIT> jit;
 std::map<std::string, std::unique_ptr<PrototypeAST>> functionPrototypes;
+std::map<char, int> binaryOpPrecedence;
 
 static llvm::IRBuilder<> builder(context);
 static std::map<std::string, llvm::Value *> namedValues;
@@ -51,6 +52,10 @@ void InitializeModuleAndPassManager() {
   functionPassManager->doInitialization();
 }
 
+void AddBinaryOp(char op, int precedence) {
+  binaryOpPrecedence[op] = precedence;
+}
+
 //===----------------------------------------------------------------------===//
 // Codegen - primary
 //===----------------------------------------------------------------------===//
@@ -61,16 +66,27 @@ llvm::Value *NumberExprAST::codegen() {
 
 llvm::Value *VariableExprAST::codegen() {
   // look this variable up in the function.
-  llvm::Value *value = namedValues[this->Name];
+  auto value = namedValues[this->Name];
   if (!value)
     LogErrorV("Unknown variable name.");
 
   return value;
 }
 
+static llvm::Function *getFunction(const std::string &name) {
+  if (auto function = module->getFunction(name))
+    return function;
+
+  auto prototype = functionPrototypes.find(name);
+  if (prototype != functionPrototypes.end())
+    return prototype->second->codegen();
+
+  return nullptr;
+}
+
 llvm::Value *BinaryExprAST::codegen() {
-  llvm::Value *left = this->Left->codegen();
-  llvm::Value *right = this->Right->codegen();
+  auto left = this->Left->codegen();
+  auto right = this->Right->codegen();
 
   if (!left || !right)
     return nullptr;
@@ -87,19 +103,15 @@ llvm::Value *BinaryExprAST::codegen() {
       left = builder.CreateFCmpULT(left, right, "cmptmp");
       return builder.CreateUIToFP(left, llvm::Type::getDoubleTy(context), "booltmp");
     default:
-      return LogErrorV("invalid binary operator");
+      break;
   }
-}
 
-static llvm::Function *getFunction(const std::string &name) {
-  if (auto function = module->getFunction(name))
-    return function;
+  // If it wasn't a builtin binary operator, it must be a user defined one.
+  auto function = getFunction(std::string("binary") + this->Op);
+  assert(function && "binary operator not found!");
 
-  auto prototype = functionPrototypes.find(name);
-  if (prototype != functionPrototypes.end())
-    return prototype->second->codegen();
-
-  return nullptr;
+  llvm::Value *Operands[2] = {left, right};
+  return builder.CreateCall(function, Operands, "binop");
 }
 
 //===----------------------------------------------------------------------===//
@@ -267,9 +279,9 @@ llvm::Function *FunctionAST::codegen() {
   if (!function)
     return nullptr;
 
-  // it should not have an body (yet...)
-  if (!function->empty())
-    return (llvm::Function *)LogErrorV("Function cannot be redefined.");
+  // If this is an operator, install it.
+  if (prototype.isBinaryOp())
+    binaryOpPrecedence[prototype.getOperatorName()] = prototype.getBinaryPrecedence();
 
   auto block = llvm::BasicBlock::Create(context, "entry", function);
   builder.SetInsertPoint(block);

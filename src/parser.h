@@ -16,5 +16,3 @@ std::unique_ptr<FunctionAST> ParseTopLevelExpr();
 
 extern int currentToken;
 int GetNextToken();
-
-void AddBinaryOp(char op, int precedence);

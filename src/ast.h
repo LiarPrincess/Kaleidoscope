@@ -15,9 +15,11 @@ extern llvm::LLVMContext context;
 extern std::unique_ptr<llvm::Module> module;
 extern std::unique_ptr<llvm::orc::KaleidoscopeJIT> jit;
 extern std::map<std::string, std::unique_ptr<PrototypeAST>> functionPrototypes;
+extern std::map<char, int> binaryOpPrecedence;
 
 void InitializeJIT();
 void InitializeModuleAndPassManager();
+void AddBinaryOp(char op, int precedence);
 
 // Base class for all expression nodes.
 class ExprAST {
@@ -103,13 +105,33 @@ class CallExprAST : public ExprAST {
 class PrototypeAST {
   std::string Name;
   std::vector<std::string> Args;
+  bool IsOperator;
+  unsigned Precedence; // Precedence if a binary op.
 
  public:
-  PrototypeAST(const std::string &name, std::vector<std::string> args)
-      : Name(name), Args(std::move(args)) {}
+  PrototypeAST(const std::string &name, std::vector<std::string> Args, bool IsOperator = false,
+               unsigned Prec = 0)
+      : Name(name), Args(std::move(Args)), IsOperator(IsOperator), Precedence(Prec) {}
 
   const std::string &getName() const {
     return Name;
+  }
+
+  bool isUnaryOp() const {
+    return IsOperator && this->Args.size() == 1;
+  }
+
+  bool isBinaryOp() const {
+    return IsOperator && this->Args.size() == 2;
+  }
+
+  char getOperatorName() const {
+    assert(isUnaryOp() || isBinaryOp());
+    return Name[Name.size() - 1];
+  }
+
+  unsigned getBinaryPrecedence() const {
+    return Precedence;
   }
 
   llvm::Function *codegen();

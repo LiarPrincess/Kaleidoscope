@@ -121,9 +121,6 @@ std::unique_ptr<ExprAST> ParsePrimary() {
 // Binary expressions
 //===----------------------------------------------------------------------===//
 
-// Precedence for each binary operator that is defined
-static std::map<char, int> binaryOpPrecedence;
-
 // Get the precedence of the pending binary operator token
 static int GetTokenPrecedence() {
   if (!isascii(currentToken))
@@ -131,10 +128,6 @@ static int GetTokenPrecedence() {
 
   int precedence = binaryOpPrecedence[currentToken];
   return precedence <= 0 ? -1 : precedence;
-}
-
-void AddBinaryOp(char op, int precedence) {
-  binaryOpPrecedence[op] = precedence;
 }
 
 // binary op rhs
@@ -259,25 +252,58 @@ static std::unique_ptr<ExprAST> ParseForExpr() {
 // prototype
 //   ::= id '(' id* ')'
 std::unique_ptr<PrototypeAST> ParsePrototype() {
-  if (currentToken != tok_identifier)
-    return LogErrorP("Unexpected function name in prototype.");
+  std::string name;
 
-  std::string name = tokenIdentifier;
-  GetNextToken();
+  unsigned kind = 0; // 0 = identifier, 1 = unary, 2 = binary.
+  unsigned binaryPrecedence = 30;
+
+  switch (currentToken) {
+    case tok_identifier:
+      name = tokenIdentifier;
+      kind = 0;
+      GetNextToken();
+      break;
+    case tok_binary:
+      GetNextToken();
+      if (!isascii(currentToken))
+        return LogErrorP("Expected binary operator");
+
+      name = "binary";
+      name += (char)currentToken;
+      kind = 2;
+      GetNextToken();
+
+      // Read the precedence if present.
+      if (currentToken == tok_number) {
+        if (tokenNumericValue < 1 || tokenNumericValue > 100)
+          return LogErrorP("Invalid precedence: must be 1..100");
+
+        binaryPrecedence = (unsigned)tokenNumericValue;
+        GetNextToken();
+      }
+      break;
+    default:
+      return LogErrorP("Expected function name in prototype");
+  }
 
   if (currentToken != '(')
     return LogErrorP("Expected '(' in prototype");
 
   std::vector<std::string> argNames;
-  while (GetNextToken() == tok_identifier) {
+  while (GetNextToken() == tok_identifier)
     argNames.push_back(tokenIdentifier);
-  }
 
   if (currentToken != ')')
     return LogErrorP("Expected ')' in prototype");
 
-  GetNextToken(); // eat ')'
-  return llvm::make_unique<PrototypeAST>(name, std::move(argNames));
+  // success.
+  GetNextToken(); // eat ')'.
+
+  // Verify right number of names for operator.
+  if (kind && argNames.size() != kind)
+    return LogErrorP("Invalid number of operands for operator");
+
+  return llvm::make_unique<PrototypeAST>(name, std::move(argNames), kind != 0, binaryPrecedence);
 }
 
 // definition ::= 'def' prototype expression
