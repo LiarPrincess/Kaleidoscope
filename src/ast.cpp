@@ -73,6 +73,10 @@ llvm::Value *VariableExprAST::codegen() {
   return value;
 }
 
+//===----------------------------------------------------------------------===//
+// Codegen - operators
+//===----------------------------------------------------------------------===//
+
 static llvm::Function *getFunction(const std::string &name) {
   if (auto function = module->getFunction(name))
     return function;
@@ -82,6 +86,18 @@ static llvm::Function *getFunction(const std::string &name) {
     return prototype->second->codegen();
 
   return nullptr;
+}
+
+llvm::Value *UnaryExprAST::codegen() {
+  auto operandV = this->Operand->codegen();
+  if (!operandV)
+    return nullptr;
+
+  auto function = getFunction(std::string("unary") + this->Opcode);
+  if (!function)
+    return LogErrorV("Unknown unary operator");
+
+  return builder.CreateCall(function, operandV, "unop");
 }
 
 llvm::Value *BinaryExprAST::codegen() {

@@ -94,7 +94,7 @@ std::unique_ptr<ExprAST> ParseIdentifierExpr() {
 }
 
 std::unique_ptr<ExprAST> ParseIfExpr();
-static std::unique_ptr<ExprAST> ParseForExpr();
+std::unique_ptr<ExprAST> ParseForExpr();
 
 // primary
 //   ::= identifierexpr
@@ -118,8 +118,26 @@ std::unique_ptr<ExprAST> ParsePrimary() {
 }
 
 //===----------------------------------------------------------------------===//
-// Binary expressions
+// Operators
 //===----------------------------------------------------------------------===//
+
+// unary
+//   ::= primary
+//   ::= '!' unary
+std::unique_ptr<ExprAST> ParseUnary() {
+  // If the current token is not an operator, it must be a primary expr.
+  if (!isascii(currentToken) || currentToken == '(' || currentToken == ',')
+    return ParsePrimary();
+
+  // If this is a unary operator, read it.
+  int opCode = currentToken;
+  GetNextToken();
+
+  if (auto operand = ParseUnary())
+    return llvm::make_unique<UnaryExprAST>(opCode, std::move(operand));
+
+  return nullptr;
+}
 
 // Get the precedence of the pending binary operator token
 static int GetTokenPrecedence() {
@@ -142,7 +160,7 @@ static std::unique_ptr<ExprAST> ParseBinaryOperationRhs(int minPrecedence,
     int binOp = currentToken;
     GetNextToken();
 
-    auto rhs = ParsePrimary();
+    auto rhs = ParseUnary();
     if (!rhs)
       return nullptr;
 
@@ -160,7 +178,7 @@ static std::unique_ptr<ExprAST> ParseBinaryOperationRhs(int minPrecedence,
 // expression
 //   ::= primary binOpRhs
 std::unique_ptr<ExprAST> ParseExpr() {
-  auto lhs = ParsePrimary();
+  auto lhs = ParseUnary();
   if (!lhs)
     return nullptr;
 
@@ -199,7 +217,7 @@ std::unique_ptr<ExprAST> ParseIfExpr() {
 }
 
 // forexpr ::= 'for' identifier '=' expr ',' expr (',' expr)? 'in' expression
-static std::unique_ptr<ExprAST> ParseForExpr() {
+std::unique_ptr<ExprAST> ParseForExpr() {
   GetNextToken(); // eat for
 
   if (currentToken != tok_identifier)
@@ -251,6 +269,8 @@ static std::unique_ptr<ExprAST> ParseForExpr() {
 
 // prototype
 //   ::= id '(' id* ')'
+//   ::= binary LETTER number? (id, id)
+//   ::= unary LETTER (id)
 std::unique_ptr<PrototypeAST> ParsePrototype() {
   std::string name;
 
@@ -261,6 +281,16 @@ std::unique_ptr<PrototypeAST> ParsePrototype() {
     case tok_identifier:
       name = tokenIdentifier;
       kind = 0;
+      GetNextToken();
+      break;
+    case tok_unary:
+      GetNextToken();
+      if (!isascii(currentToken))
+        return LogErrorP("Expected unary operator");
+
+      name = "unary";
+      name += (char)currentToken;
+      kind = 1;
       GetNextToken();
       break;
     case tok_binary:
