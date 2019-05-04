@@ -34,6 +34,8 @@ int AdvanceToken() {
       return tok_binary;
     if (tokenIdentifier == "unary")
       return tok_unary;
+    if (tokenIdentifier == "var")
+      return tok_var;
 
     return tok_identifier;
   }

@@ -20,7 +20,9 @@ enum Token {
   tok_in = -10,
   // operators
   tok_binary = -11,
-  tok_unary = -12
+  tok_unary = -12,
+  // var definition
+  tok_var = -13
 };
 
 // Filled in if tok_identifier

@@ -75,6 +75,19 @@ class BinaryExprAST : public ExprAST {
   llvm::Value *codegen() override;
 };
 
+// VarExprAST - Expression class for var/in
+class VarExprAST : public ExprAST {
+  std::vector<std::pair<std::string, std::unique_ptr<ExprAST>>> VarNames; // multiple vars!
+  std::unique_ptr<ExprAST> Body;
+
+ public:
+  VarExprAST(std::vector<std::pair<std::string, std::unique_ptr<ExprAST>>> VarNames,
+             std::unique_ptr<ExprAST> Body)
+      : VarNames(std::move(VarNames)), Body(std::move(Body)) {}
+
+  llvm::Value *codegen() override;
+};
+
 // IfExprAST - Expression class for if/then/else.
 class IfExprAST : public ExprAST {
   std::unique_ptr<ExprAST> Cond, Then, Else;

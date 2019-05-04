@@ -93,13 +93,66 @@ std::unique_ptr<ExprAST> ParseIdentifierExpr() {
   return llvm::make_unique<CallExprAST>(name, std::move(args));
 }
 
+/// varexpr ::= 'var' identifier ('=' expression)?
+//                    (',' identifier ('=' expression)?)* 'in' expression
+static std::unique_ptr<ExprAST> ParseVarExpr() {
+  GetNextToken(); // eat the var.
+
+  std::vector<std::pair<std::string, std::unique_ptr<ExprAST>>> VarNames;
+
+  // At least one variable name is required.
+  if (currentToken != tok_identifier)
+    return LogError("expected identifier after var");
+
+  while (1) {
+    std::string Name = tokenIdentifier;
+    GetNextToken(); // eat identifier
+
+    // Read the optional initializer.
+    std::unique_ptr<ExprAST> Init;
+    if (currentToken == '=') {
+      GetNextToken(); // eat the '='.
+
+      Init = ParseExpr();
+      if (!Init)
+        return nullptr;
+    }
+
+    VarNames.push_back(std::make_pair(Name, std::move(Init)));
+
+    // End of var list, exit loop.
+    if (currentToken != ',')
+      break;
+
+    GetNextToken(); // eat ','
+
+    if (currentToken != tok_identifier)
+      return LogError("expected identifier list after var");
+  }
+
+  // At this point, we have to have 'in'.
+  if (currentToken != tok_in)
+    return LogError("expected 'in' keyword after 'var'");
+
+  GetNextToken(); // eat 'in'.
+
+  auto Body = ParseExpr();
+  if (!Body)
+    return nullptr;
+
+  return llvm::make_unique<VarExprAST>(std::move(VarNames), std::move(Body));
+}
+
 std::unique_ptr<ExprAST> ParseIfExpr();
 std::unique_ptr<ExprAST> ParseForExpr();
 
-// primary
-//   ::= identifierexpr
-//   ::= numberexpr
-//   ::= parenexpr
+/// primary
+///   ::= identifierexpr
+///   ::= numberexpr
+///   ::= parenexpr
+///   ::= ifexpr
+///   ::= forexpr
+///   ::= varexpr
 std::unique_ptr<ExprAST> ParsePrimary() {
   switch (currentToken) {
     case tok_identifier:
@@ -110,6 +163,8 @@ std::unique_ptr<ExprAST> ParsePrimary() {
       return ParseIfExpr();
     case tok_for:
       return ParseForExpr();
+    case tok_var:
+      return ParseVarExpr();
     case '(':
       return ParseParenExpr();
     default:
