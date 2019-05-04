@@ -113,6 +113,25 @@ llvm::Value *UnaryExprAST::codegen() {
 }
 
 llvm::Value *BinaryExprAST::codegen() {
+  if (this->Op == '=') {
+    // Assignment requires the LHS to be an identifier.
+    auto variableNode = dynamic_cast<VariableExprAST *>(this->Left.get());
+    if (!variableNode)
+      return LogErrorV("destination of '=' must be a variable");
+
+    auto value = this->Right->codegen();
+    if (!value)
+      return nullptr;
+
+    // Look up the name.
+    auto variable = namedValues[variableNode->getName()];
+    if (!variable)
+      return LogErrorV("Unknown variable name");
+
+    builder.CreateStore(value, variable);
+    return value;
+  }
+
   auto left = this->Left->codegen();
   auto right = this->Right->codegen();
 

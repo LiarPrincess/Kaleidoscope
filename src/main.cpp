@@ -87,6 +87,7 @@ extern "C" double printd(double X) {
 
 int main(int argc, char const *argv[]) {
   // Install standard binary operators. 1 is lowest precedence.
+  AddBinaryOp('=', 2);
   AddBinaryOp('<', 10);
   AddBinaryOp('+', 20);
   AddBinaryOp('-', 20);
